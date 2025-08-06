@@ -198,6 +198,16 @@ app.post('/finishSubTask', async (req, res) => {
     res.json({ data:'okey'})
 })
 
+app.post('/dropSubtask', async (req, res) => {
+  const id = req.body.id
+  await prisma.subTask.delete({
+    where:{
+      id:id
+    }
+  })
+  res.json({data:'okey'})
+})
+
 app.post('/getFiles', async (req,res) => {
   const subtaskId = req.body.subtaskId
   // console.log(subtaskId)
@@ -284,6 +294,8 @@ app.post('/subCommentary', async (req,res)  => {
   })
   res.json(commentaries)
 })
+
+
 
 app.listen(PORT, ()=> {
     console.log('Serveur Express lancé sur http://localhost:'+PORT)
