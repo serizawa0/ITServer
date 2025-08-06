@@ -1,0 +1,94 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User{
+  id Int @id @default(autoincrement())
+  name String
+  actions Action[]
+}
+model Item{
+  id Int @id @default(autoincrement())
+  libele String
+  actions Action[]
+}
+
+model Action{
+  id Int @id @default(autoincrement())
+  desc String
+  date DateTime @default(now())
+
+  userId Int
+  itemId Int
+
+  user User @relation(fields: [userId], references: [id])
+  item Item @relation(fields: [itemId], references: [id])
+}
+
+model Task{
+  id String @id() @default(uuid())
+  title String
+  desc String?
+  status TaskStatus @default(PENDING)
+  dueTime DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  subTasks SubTask[] @relation("RootTaskSubtasks")
+}
+
+model SubTask{
+  id String @id @default(uuid())
+  title String
+  done Boolean @default(false)
+  task Task @relation("RootTaskSubtasks", fields: [taskId], references: [id], onDelete: Cascade)
+  taskId String
+  parent SubTask? @relation("ParentSubTask", fields: [parentId], references: [id], onDelete: Cascade)
+  parentId String?
+  children SubTask[] @relation("ParentSubTask")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt() 
+  files File[]
+  commentary Commentary[]
+  deadLine DateTime
+  endDate DateTime?
+}
+
+enum TaskStatus{
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  CANCELED
+}
+
+model File{
+  id String @id @default(uuid())
+  filename   String
+  mimetype   String
+  path       String
+  size Int
+  uploadedAt DateTime @default(now())
+  subTaskId  String
+  subTask SubTask @relation(fields: [subTaskId], references: [id], onDelete: Cascade)
+}
+
+model Commentary{
+  id String @id @default(uuid())
+  content String
+  subtaskId String
+  author String
+  subTask SubTask @relation(fields: [subtaskId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt()
+}
