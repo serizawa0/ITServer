@@ -138,6 +138,16 @@ app.get('/getTask', async (req, res) => {
     }
 })
 
+app.post('/dropTask', async (req,res) => {
+  const id = req.body.id
+  await prisma.task.delete({
+    where:{
+      id:id
+    }
+  })
+  res.json({data:'okey'})
+})
+
 app.post('/addTask', async (req,res) => {
     const title = req.body.title
     await prisma.task.create({
