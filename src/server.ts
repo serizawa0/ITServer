@@ -7,6 +7,11 @@ import { SubTask } from "../interfaces/TaskInterfaces"
 
 import path from 'path'
 import multer from "multer"
+import { createServer } from "node:http"
+
+import { Server as SocketIOServer } from 'socket.io'
+
+import fs from 'fs';
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => { 
@@ -138,6 +143,21 @@ app.get('/getTask', async (req, res) => {
     }
 })
 
+async function getAllTasks(){
+  try {
+        const tasks = await prisma.task.findMany();
+
+        const retour = await Promise.all(
+          tasks.map(task => getTaskWithSubTasks(task.id))
+        );
+        console.log(retour);
+        return retour // on renvoie au client la liste des tâches avec sous-tâches
+    } catch (error) {
+        console.error(error);
+        return
+    }
+}
+
 app.post('/dropTask', async (req,res) => {
   const id = req.body.id
   await prisma.task.delete({
@@ -156,6 +176,7 @@ app.post('/addTask', async (req,res) => {
         }
     })
     const tasks = await prisma.task.findMany()
+    // io.emit('refreshTasks', { data:tasks })
     res.json(tasks)
 })
 
@@ -178,7 +199,9 @@ app.post('/addSubTask', async (req,res) => {
             } },
             deadLine: deadLine
         }
-        })    
+        }
+        
+      ) 
     }
     else{
         await prisma.subTask.create({
@@ -231,6 +254,44 @@ app.post('/getFiles', async (req,res) => {
   res.json(files)
 })
 
+app.post('/download', async (req, res) => {
+  const filePath = path.join(__dirname, '../uploads', req.body.filename);
+
+  if (fs.existsSync(filePath)) {
+    res.download(filePath); // Force le téléchargement
+  } else {
+    res.status(404).send('Fichier non trouvé');
+  }
+});
+
+app.post('/deleteFile', async (req, res) => {
+  const id = req.body.id
+  const fichier = await prisma.file.findUnique({
+    where:{
+      id: id
+    }
+  })
+  if (fichier) {
+   const filePath = path.join(__dirname, '../uploads', fichier.filename);
+   fs.unlink(filePath, async (err) => {
+    if (err) {
+      if (err.code === 'ENOENT') {
+        return res.status(404).send({ message: 'Fichier non trouvé' });
+      }
+      return res.status(500).send({ message: 'Erreur lors de la suppression' });
+    }
+    else{
+      await prisma.file.delete({
+        where:{
+          id:id
+        }
+      })
+      res.send({ message: 'Fichier supprimé avec succès' });
+    }
+  }) 
+  }
+})
+
 app.post('/uploadFiles', upload.array('files') ,async (req, res) => {
     const subtaskId = req.body.subtaskId
     const taskId = req.body.taskId
@@ -261,7 +322,6 @@ app.post('/uploadFiles', upload.array('files') ,async (req, res) => {
         
       })
     ));
-
     res.json({ message: 'Fichiers uploadés et sauvegardés', files: savedFiles });
   } catch (error) {
     console.error(error);
@@ -305,9 +365,75 @@ app.post('/subCommentary', async (req,res)  => {
   res.json(commentaries)
 })
 
+app.post('/editCommentary', async (req,res)  => {
+  const id = req.body.id
+  const subtaskId = req.body.subtaskId
+  const content = req.body.content
+  const author = req.body.author
+  await prisma.commentary.update({
+    where:{
+      id:id
+    },
+    data:{
+      content:content,
+      author:author
+    }
+  })
+  const commentaries = await prisma.commentary.findMany({
+    where:{
+      subtaskId:subtaskId
+    },
+    orderBy:{
+      createdAt:"asc"
+    }
+  })
+  res.json(commentaries)
+})
+
+app.post('/deleteCommentary', async (req, res) => {
+  const id = req.body.id
+  await prisma.commentary.delete({
+    where:{
+      id:id
+    }
+  })
+  res.json({data:'okey'})
+})
+
+const httpServer = createServer(app);
+
+// Configuration Socket.IO
+const io = new SocketIOServer(httpServer, {
+  cors: {
+    origin: [
+      "http://localhost:4200",
+      "http://192.168.1.175:4200"
+    ],
+    methods: ["GET", "POST"]
+  }
+});
+
+io.on("connection", (socket) => {
+  console.log("Client connecté :", socket.id);
+
+  socket.on("message", (msg) => {
+    console.log("Message reçu :", msg);
+    // Répondre au client
+    socket.emit("message-reponse", `Serveur a reçu : ${msg}`);
+  });
+
+  socket.on("disconnect", () => {
+    console.log("Client déconnecté :", socket.id);
+  });
+  socket.on('launchRefresh',async () => {
+    getAllTasks().then(data => {
+      io.emit('refreshTasks', data)
+    })
+  })
+});
 
 
-app.listen(PORT, ()=> {
+httpServer.listen(PORT, ()=> {
     console.log('Serveur Express lancé sur http://localhost:'+PORT)
     console.log(getToday())
 })
